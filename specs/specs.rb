@@ -194,5 +194,44 @@ describe ActiveRecord::ConnectionAdapters::MasterSlaveAdapter do
     end
 
   end
- 
+
+  describe 'with error hooks' do
+    before do
+      @database_setup = {
+        :adapter => 'master_slave',
+        :username => 'root',
+        :database => 'slave',
+        :eager_load_connections => 'true',
+        :master_slave_adapter => 'test',
+        :master => { :username => 'root', :database => 'master' }
+      }
+
+      @logger = mock('logger')
+
+      ActiveRecord::Base.establish_connection( @database_setup )
+      ActiveRecord::Base.connection.register_hook(:after_error) do
+        @logger.error 'Connection failed!'
+      end
+    end
+
+    it 'should raise an exception if an invalid hook point is used' do
+      lambda { ActiveRecord::Base.connection.register_hook(:bad_hook) }.should raise_error
+    end
+
+    describe 'with valid points' do
+      before do
+        @logger.should_receive :error
+      end
+
+      it 'should run the registered logic if the master connection errors' do
+        ActiveRecord::Base.connection.should_receive(:connect_to_master).and_raise
+        lambda { ActiveRecord::Base.connection.master_connection }.should raise_error
+      end
+
+      it 'should run the registered logic if the slave connection errors' do
+        ActiveRecord::Base.connection.should_receive(:connect_to_slave).and_raise
+        lambda { ActiveRecord::Base.connection.slave_connection }.should raise_error
+      end
+    end
+  end
 end

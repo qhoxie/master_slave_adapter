@@ -5,6 +5,7 @@ module ActiveRecord
     class MasterSlaveAdapter
 
       SELECT_METHODS = [ :select_all, :select_one, :select_rows, :select_value, :select_values ]
+      HOOK_POINTS = [ :after_error ]
 
       include ActiveSupport::Callbacks
       define_callbacks :checkout, :checkin
@@ -33,6 +34,22 @@ module ActiveRecord
           connect_to_master
           connect_to_slave
         end
+
+        @hooks = HOOK_POINTS.inject({}) do |_, point|
+          _[point] = []
+          _
+        end
+      end
+
+      def register_hook(point, &block)
+        raise "Unknown hook point: #{point}" unless valid_hook_point point
+        @hooks[point] << block
+      end
+
+      HOOK_POINTS.each do |point|
+        define_method(point) do
+          @hooks[point].each { |blk| blk.call }
+        end
       end
 
       def slave_connection
@@ -43,6 +60,9 @@ module ActiveRecord
         else
           connect_to_slave
         end
+      rescue Exception => e
+        after_error
+        raise e
       end
 
       def reconnect!
@@ -65,6 +85,9 @@ module ActiveRecord
 
       def master_connection
         connect_to_master
+      rescue Exception => e
+        after_error
+        raise e
       end
 
       def connections
@@ -108,6 +131,10 @@ module ActiveRecord
       end
 
       private
+
+      def valid_hook_point(point)
+        HOOK_POINTS.include? point
+      end
 
       def connect_to_master
         @master_connection ||= ActiveRecord::Base.send( "#{self.master_config[:adapter]}_connection", self.master_config )
