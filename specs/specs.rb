@@ -195,7 +195,7 @@ describe ActiveRecord::ConnectionAdapters::MasterSlaveAdapter do
 
   end
 
-  describe 'with error hooks' do
+  describe 'with error callbacks' do
     before do
       @database_setup = {
         :adapter => 'master_slave',
@@ -206,21 +206,21 @@ describe ActiveRecord::ConnectionAdapters::MasterSlaveAdapter do
         :master => { :username => 'root', :database => 'master' }
       }
 
-      @logger = mock('logger')
-
       ActiveRecord::Base.establish_connection( @database_setup )
-      ActiveRecord::Base.connection.register_hook(:after_error) do
-        @logger.error 'Connection failed!'
+      ActiveRecord::Base.connection.register_callback(:after_error) do
+        #noop
       end
+      ActiveRecord::Base.connection.should_receive(:run_callbacks).with(:checkin).any_number_of_times
+      ActiveRecord::Base.connection.should_receive(:run_callbacks).with(:checkout).any_number_of_times
     end
 
     it 'should raise an exception if an invalid hook point is used' do
-      lambda { ActiveRecord::Base.connection.register_hook(:bad_hook) }.should raise_error
+      lambda { ActiveRecord::Base.connection.register_callback(:bad_hook) }.should raise_error
     end
 
     describe 'with valid points' do
       before do
-        @logger.should_receive :error
+        ActiveRecord::Base.connection.should_receive(:run_callbacks).with(:after_error)
       end
 
       it 'should run the registered logic if the master connection errors' do
